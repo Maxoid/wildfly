@@ -24,10 +24,6 @@
 
 package org.jboss.as.ejb3.logging;
 
-import static org.jboss.logging.Logger.Level.ERROR;
-import static org.jboss.logging.Logger.Level.INFO;
-import static org.jboss.logging.Logger.Level.WARN;
-
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -103,6 +99,8 @@ import org.jboss.logging.annotations.Param;
 import org.jboss.metadata.ejb.spec.MethodParametersMetaData;
 import org.jboss.msc.service.ServiceController;
 import org.jboss.msc.service.ServiceName;
+
+import static org.jboss.logging.Logger.Level.*;
 
 /**
  * @author <a href="mailto:Flemming.Harms@gmail.com">Flemming Harms</a>
@@ -3150,4 +3148,8 @@ public interface EjbLogger extends BasicLogger {
     @LogMessage(level = ERROR)
     @Message(id = 502, value = "Exception checking if timer %s should run")
     void exceptionCheckingIfTimerShouldRun(Timer timer, @Cause Exception e);
+
+    @LogMessage(level = FATAL)
+    @Message(id = 503, value = "Failed to persist timer's state %s. Timer has to be restored manually")
+    void exceptionPersistPostTimerState(Timer timer, @Cause Exception e);
 }
