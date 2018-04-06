@@ -604,10 +604,46 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
                     EJB3_TIMER_LOGGER.timerPersistenceNotEnable();
                     return;
                 }
-                if (newTimer) {
-                    timerPersistence.getValue().addTimer(timer);
+
+                Transaction clientTX = transactionManager.getTransaction();
+                if (newTimer || timer.isCanceled()) {
+                    if( clientTX == null ){
+                        transactionManager.begin();
+                    }
+                    try {
+                        if( newTimer ) timerPersistence.getValue().addTimer(timer);
+                        else timerPersistence.getValue().persistTimer(timer);
+                        if(clientTX == null) transactionManager.commit();
+                    } catch (Exception e){
+                        if(clientTX == null) {
+                            try {
+                                transactionManager.rollback();
+                            } catch (Exception ee){
+                                EjbLogger.EJB3_TIMER_LOGGER.timerUpdateFailedAndRollbackNotPossible(ee);
+                            }
+                        }
+                        throw e;
+                    }
                 } else {
-                    timerPersistence.getValue().persistTimer(timer);
+                    for (int count = 3; count > 0; count--) {
+                        try {
+                            transactionManager.begin();
+                            timerPersistence.getValue().persistTimer(timer);
+                            transactionManager.commit();
+                            break;
+                        } catch (RuntimeException e) {
+                            try {
+                                transactionManager.rollback();
+                            } catch (Exception ee) {
+                                // omit;
+                            }
+                            if (count > 1) {
+                                EJB3_TIMER_LOGGER.debug("Failed to persist timer " + timer + " due to " + e.getCause());
+                            } else {
+                                throw e;
+                            }
+                        }
+                    }
                 }
 
             } catch (Throwable t) {

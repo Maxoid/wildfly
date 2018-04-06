@@ -393,6 +393,7 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
         Connection connection = null;
         PreparedStatement statement = null;
         try {
+            tm.begin();
             try {
                 connection = dataSource.getConnection();
                 statement = connection.prepareStatement(loadTimer);
@@ -407,10 +408,16 @@ public class DatabaseTimerPersistence implements TimerPersistence, Service<Datab
                     statement.setTimestamp(6, timestamp(timer.getNextExpiration()));
                 }
             } catch (SQLException e) {
-                // something wrong with the preparation
-                throw new RuntimeException(e);
+                try {
+                    tm.rollback();
+                } catch (Exception ee){
+                    EjbLogger.EJB3_TIMER_LOGGER.timerUpdateFailedAndRollbackNotPossible(ee);
+                }
+                // fix for WFLY-10130
+                EjbLogger.EJB3_TIMER_LOGGER.exceptionCheckingIfTimerShouldRun(timer, e);
+                return false;
             }
-            tm.begin();
+
             int affected = statement.executeUpdate();
             tm.commit();
             return affected == 1;
