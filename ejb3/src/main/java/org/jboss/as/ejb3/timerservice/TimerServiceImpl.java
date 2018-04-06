@@ -625,7 +625,7 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
                         throw e;
                     }
                 } else {
-                    new TaskPostPersist(timer).run();
+                    new TaskPostPersist(timer).persistTimer();
                 }
 
             } catch (Throwable t) {
