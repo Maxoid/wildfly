@@ -3130,4 +3130,16 @@ public interface EjbLogger extends BasicLogger {
     @LogMessage(level = WARN)
     @Message(id = 497, value = "Failed to persist timer %s on startup. This is likely due to another cluster member making the same change, and should not affect operation.")
     void failedToPersistTimerOnStartup(TimerImpl activeTimer, @Cause  Exception e);
+
+    @LogMessage(level = WARN)
+    @Message(id = 502, value = "Exception checking if timer %s should run")
+    void exceptionCheckingIfTimerShouldRun(Timer timer, @Cause Exception e);
+
+    @LogMessage(level = ERROR)
+    @Message(id = 503, value = "Failed to persist timer's state %s. Timer has to be restored manually")
+    void exceptionPersistPostTimerState(Timer timer, @Cause Exception e);
+
+    @LogMessage(level = WARN)
+    @Message(id = 508, value = "Failed to persist timer's state %s due to %s")
+    void exceptionPersistTimerState(Timer timer, Exception e);
 }

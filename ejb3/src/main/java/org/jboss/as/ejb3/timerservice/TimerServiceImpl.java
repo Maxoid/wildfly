@@ -605,10 +605,28 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
                     EJB3_TIMER_LOGGER.timerPersistenceNotEnable();
                     return;
                 }
-                if (newTimer) {
-                    timerPersistence.getValue().addTimer(timer);
+
+                Transaction clientTX = transactionManager.getTransaction();
+                if (newTimer || timer.isCanceled()) {
+                    if( clientTX == null ){
+                        transactionManager.begin();
+                    }
+                    try {
+                        if( newTimer ) timerPersistence.getValue().addTimer(timer);
+                        else timerPersistence.getValue().persistTimer(timer);
+                        if(clientTX == null) transactionManager.commit();
+                    } catch (Exception e){
+                        if(clientTX == null) {
+                            try {
+                                transactionManager.rollback();
+                            } catch (Exception ee){
+                                EjbLogger.EJB3_TIMER_LOGGER.timerUpdateFailedAndRollbackNotPossible(ee);
+                            }
+                        }
+                        throw e;
+                    }
                 } else {
-                    timerPersistence.getValue().persistTimer(timer);
+                    new TaskPostPersist(timer).persistTimer();
                 }
 
             } catch (Throwable t) {
