@@ -149,6 +149,7 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
         ineligibleTimerStates = Collections.unmodifiableSet(states);
     }
 
+    private static final Integer MAX_RETRY = Integer.getInteger("jboss.timer.TaskPostPersist.maxRetry", 10);
     /**
      * Creates a {@link TimerServiceImpl}
      *
@@ -1222,15 +1223,15 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
 
     private class TaskPostPersist extends java.util.TimerTask {
         private final TimerImpl timer;
-        private int triesCounter = 0;
+        private long delta = 0;
 
         TaskPostPersist(TimerImpl timer) {
             this.timer = timer;
         }
 
-        TaskPostPersist(TimerImpl timer, int triesCounter) {
+        TaskPostPersist(TimerImpl timer, long delta) {
             this.timer = timer;
-            this.triesCounter = triesCounter;
+            this.delta = delta;
         }
 
         @Override
@@ -1254,23 +1255,15 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
                 }
                 EJB3_TIMER_LOGGER.exceptionRunningTimerTask(timer, timer.getTimedObjectId(), e);
                 Date nextExpiration = timer.getNextExpiration();
-                if( nextExpiration != null ){
-                    int max = 10;
-                    String pMax = System.getProperty("jboss.timer.TaskPostPersist.maxRetry");
-                    if( pMax != null ) {
-                        try {
-                            max = Integer.parseInt(pMax);
-                        } catch (NumberFormatException nfe ){
-                            // omit
-                        }
+                long nextExpirationDelay;
+                if (nextExpiration != null &&
+                        (nextExpirationDelay = nextExpiration.getTime() - System.currentTimeMillis()) > delta) {
+                    if (delta == 0L) {
+                        delta = nextExpirationDelay / (1L + MAX_RETRY.longValue());
                     }
-                    if( triesCounter++ < max ) {
-                        long nextTryDelay = nextExpiration.getTime() - System.currentTimeMillis() / 5;
-                        if (nextTryDelay <= 0 || nextTryDelay > 60000L) nextTryDelay = 5000L;
-                        timerInjectedValue.getValue().schedule( new TaskPostPersist(timer, triesCounter), nextTryDelay);
-                    } else {
-                        EJB3_TIMER_LOGGER.exceptionPersistPostTimerState(timer, e);
-                    }
+                    timerInjectedValue.getValue().schedule(new TaskPostPersist(timer, delta), delta);
+                } else {
+                    EJB3_TIMER_LOGGER.exceptionPersistPostTimerState(timer, e);
                 }
             }
         }
