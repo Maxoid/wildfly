@@ -24,7 +24,6 @@ package org.jboss.as.ejb3.timerservice;
 import java.io.Closeable;
 import java.io.Serializable;
 import java.lang.reflect.Method;
-import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
