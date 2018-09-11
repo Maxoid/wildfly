@@ -149,6 +149,7 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
         ineligibleTimerStates = Collections.unmodifiableSet(states);
     }
 
+    private static final Integer MAX_RETRY = Integer.getInteger("jboss.timer.TaskPostPersist.maxRetry", 10);
     /**
      * Creates a {@link TimerServiceImpl}
      *
@@ -953,8 +954,20 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
             //if the persistence setting is null then there are no persistent timers
             return Collections.emptyList();
         }
-
-        final List<TimerImpl> persistedTimers = timerPersistence.getValue().loadActiveTimers(timedObjectId, this);
+        List<TimerImpl> persistedTimers;
+        try {
+            transactionManager.begin();
+            persistedTimers = timerPersistence.getValue().loadActiveTimers(timedObjectId, this);
+            transactionManager.commit();
+        } catch (Exception e){
+            try {
+                transactionManager.rollback();
+            } catch (Exception ee) {
+                // omit;
+            }
+            persistedTimers = Collections.emptyList();
+            EJB3_TIMER_LOGGER.timerReinstatementFailed(timedObjectId, "unavailable", e);
+        }
         final List<TimerImpl> activeTimers = new ArrayList<TimerImpl>();
         for (final TimerImpl persistedTimer : persistedTimers) {
             if (ineligibleTimerStates.contains(persistedTimer.getState())) {
@@ -1186,6 +1199,57 @@ public class TimerServiceImpl implements TimerService, Service<TimerService> {
                 }
             } finally {
                 timer.unlock();
+            }
+        }
+    }
+
+    private class TaskPostPersist extends java.util.TimerTask {
+        private final TimerImpl timer;
+        private long delta = 0;
+        private long nextExpirationPristine = 0;
+
+        TaskPostPersist(TimerImpl timer) {
+            this.timer = timer;
+            if (timer.nextExpiration != null) {
+                this.nextExpirationPristine = timer.nextExpiration.getTime();
+            }
+        }
+
+        TaskPostPersist(TimerImpl timer, long delta, long nextExpirationPristine) {
+            this.timer = timer;
+            this.delta = delta;
+            this.nextExpirationPristine = nextExpirationPristine;
+        }
+
+        @Override
+        public void run() {
+            executorServiceInjectedValue.getValue().submit(this::persistTimer);
+        }
+
+        void persistTimer() {
+            try {
+                transactionManager.begin();
+                timerPersistence.getValue().persistTimer(timer);
+                transactionManager.commit();
+            } catch (Exception e) {
+                try {
+                    transactionManager.rollback();
+                } catch (Exception ee) {
+                    // omit;
+                }
+                EJB3_TIMER_LOGGER.exceptionPersistTimerState(timer, e);
+                long nextExpirationDelay;
+                if (nextExpirationPristine > 0 && timer.timerState != TimerState.RETRY_TIMEOUT &&
+                        (nextExpirationDelay = nextExpirationPristine - System.currentTimeMillis()) > delta) {
+                    if (delta == 0L) {
+                        delta = nextExpirationDelay / (1L + MAX_RETRY.longValue());
+                    }
+                    timerInjectedValue
+                            .getValue()
+                            .schedule(new TaskPostPersist(timer, delta, nextExpirationPristine), delta);
+                } else {
+                    EJB3_TIMER_LOGGER.exceptionPersistPostTimerState(timer, e);
+                }
             }
         }
     }
